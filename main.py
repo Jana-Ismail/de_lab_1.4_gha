@@ -1,11 +1,36 @@
 import json
 import os
-import pandas as pd
 import requests
+import csv
+from dotenv import load_dotenv
 from requests.exceptions import HTTPError
 
+load_dotenv()
+
+def main():
+    # token = get_token()
+    user = {
+        'username': os.getenv('API_USERNAME'),
+        'password': os.getenv('API_PASSWORD')
+    }
+
+    user_response = create_user(user)
+
+    headers = {'Authorization': f'Bearer {user_response['token']}'}
+    people_response = get_people(headers)
+
+    people_with_query_params = get_people(headers, 2, 10)
+
+    total = people_response['total_items']
+
+    json_file_path = './data/people_from_azure_api.json'
+    load_people_to_json_file(headers, total, json_file_path)
+
+    csv_file_path = './data/people_from_azure_api.csv'
+    load_people_to_csv(headers, total, csv_file_path)
+
 def create_user(user):
-    url = 'https://developyr-api.azurewebsites.net/api/auth'
+    url = f'{os.getenv('BASE_URL')}/auth'
     try:
         response = requests.post(url, json=user)
 
@@ -47,7 +72,6 @@ def load_people_to_json_file(headers, total, file_path):
                 f.seek(-1, 2) # Go to end of file and find last byte
                 last_char = f.read(1) # Read that byte
 
-
                 # Check if that byte is a ']'
                 if last_char == b']':
                     # Go to end of file and find last byte again
@@ -86,57 +110,28 @@ def load_people_to_csv(headers, total, file_path):
     offset=0
 
     while offset < total:
-        with open(file_path, 'a'):
-            pass
+        response = get_people(headers, limit, offset)
+        people = response['data']
 
-def main():
-    # token = get_token()
-    # need to put user data in .env file, rather than hard coding
-    user = {
-        'username': 'admin',
-        'password': 'password123'
-    }
+        if not os.path.exists(file_path):
+            header = people[0].keys()
 
-    user_response = create_user(user)
-    # print(user_response)
-
-    headers = {'Authorization': f'Bearer {user_response['token']}'}
-
-    people_response = get_people(headers)
-    # print(people_response)
-
-    people_with_query_params = get_people(headers, 2, 10)
-    # print(people_with_query_params)
-
-    total = people_response['total_items']
-
-    file_path = './data/people_from_azure_api.json'
-    load_people_to_json_file(headers, total, file_path)
-
-
+            # Use DictWriter to write to CSV
+            with open(file_path, 'w', newline='') as csv_file:
+                writer = csv.DictWriter(csv_file, fieldnames=header)
+                writer.writeheader()
+                for person_row in people:
+                    escaped_row = {key: value.replace('\n', '\\n') if isinstance(value, str) else value for key, value in person_row.items()}
+                    writer.writerow(escaped_row)
+            
+        else:
+            with open(file_path, 'a') as csv_file:
+                writer = csv.DictWriter(csv_file, fieldnames=header)
+                for person_row in people:
+                    escaped_row = {key: value.replace('\n', '\\n') if isinstance(value, str) else value for key, value in person_row.items()}
+                    writer.writerow(escaped_row)
+                
+        offset += 10
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-# with open(file_path, 'rb+') as f:
-#     # replace last ']' character with ','
-#     # in the existing .json file
-    
-#     # Move to the end of the file and read backwards to find the last char
-#     f.seek(-1, 2) # -1 argument goes to last byte, 2 seeks the end of the file [0 => beginning of file, 1=>current position of the file pointer]
-#     last_char = f.read(1) # read the byte that .seek() found
-
-#     if last_char == b']':
-#         f.seek(-1, 2) # move back to overwrite
-#         f.write(b',')
